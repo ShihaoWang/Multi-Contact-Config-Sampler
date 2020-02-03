@@ -8,8 +8,8 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
 #set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -flto")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g")
 
-set(CMAKE_BUILD_TYPE "Release")
-#set(CMAKE_BUILD_TYPE "Debug")
+#set(CMAKE_BUILD_TYPE "Release")
+set(CMAKE_BUILD_TYPE "Debug")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/usr/local/include" )
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L/usr/local/lib")
@@ -63,7 +63,7 @@ set(CILANTRO_LIBRARIES cilantro.so pangolin.so)
 
 # Main Code Properties
 add_executable(MyApp
-               src/Main.cpp
+               src/Sampler.cpp
                src/CommonHeader.h
                src/ContactInfoLoader.cpp
                src/EnviGeometry.cpp

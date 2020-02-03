@@ -1174,4 +1174,49 @@ struct FailureStateInfo
   Config FailureVelocity;
   bool FailureInitFlag;
 };
+
+struct RegionInfo
+{
+  RegionInfo()
+  {
+    // Initialize all of their values to be zero!
+    xMin = 0.0; xMax = 0.0;
+    yMin = 0.0; yMax = 0.0;
+    zMin = 0.0; zMax = 0.0;
+  }
+  RegionInfo(const double & _xMin, const double & _xMax, const double & _yMin, const double & _yMax, const double & _zMin, const double & _zMax):xMin(_xMin), xMax(_xMax), yMin(_yMin), yMax(_yMax), zMin(_zMin), zMax(_zMax){};
+  void xUpdate(const double & xMinVal, const double & xMaxVal)
+  {
+    xMin = xMinVal;
+    xMax = xMaxVal;
+  }
+  void yUpdate(const double & yMinVal, const double & yMaxVal)
+  {
+    yMin = yMinVal;
+    yMax = yMaxVal;
+  }
+  void zUpdate(const double & zMinVal, const double & zMaxVal)
+  {
+    zMin = zMinVal;
+    zMax = zMaxVal;
+  }
+  double SingleSample(const double & min, const double & max)
+  {
+    std::uniform_real_distribution<double> unif(-1.0 * min, 1.0 * max);
+    std::random_device rand_dev;          // Use random_device to get a random seed.
+    std::mt19937 rand_engine(rand_dev()); // mt19937 is a good pseudo-random number generator.
+    double boundval = unif(rand_engine);
+    return boundval;
+  }
+  Vector3 Sample()
+  {
+    double xVal = SingleSample(xMin, xMax);
+    double yVal = SingleSample(yMin, yMax);
+    double zVal = SingleSample(zMin, zMax);
+    return Vector3(xVal, yVal, zVal);
+  }
+  double xMin, xMax;
+  double yMin, yMax;
+  double zMin, zMax;
+};
 #endif

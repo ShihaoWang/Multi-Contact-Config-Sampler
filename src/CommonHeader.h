@@ -38,7 +38,7 @@ void PushInfoFileAppender(const double & SimTime, const double & Fx_t, const dou
 
 /* 3. Robot Initial State Optimization */
 bool InitialStateOptFn(Robot& _SimRobotObj, const std::vector<LinkInfo> & _RobotLinkInfo, const std::vector<ContactStatusInfo> &  _RobotContactInfo, const std::vector<double>& _RobotConfigRef, const double & _KEInit, const Vector3& _CentDirection, std::vector<double> & RobotConfig, std::vector<double> & RobotVelocity, const bool & ConfigFlag, const bool & VelocityFlag);
-std::vector<double> InitialConfigurationOptimization(Robot& _SimRobotObj, const std::vector<ContactStatusInfo> &  _RobotContactInfo, const std::vector<double>& _RobotConfigRef);
+std::vector<double> InitialConfigurationOptimization(Robot& _SimRobotObj, const std::vector<ContactStatusInfo> &  _RobotContactInfo, const std::vector<double>& _RobotConfigRef,const std::vector<RegionInfo> & _RegionInfoObj, int & OptFlag);
 
 /* 4. Robot Utility Functions */
 void SimRobotToRobotState(const Robot &_SimRobot, std::vector<double>& _Config, std::vector<double>& _Velocity);
@@ -72,6 +72,7 @@ double PresumeContactMinDis(Robot & SimRobot, const std::vector<ContactStatusInf
 Vector3 ImpulForceGene(const double & ImpFx, const double & ImpFy, const double & ImpFz);
 Vector3 ImpulForceMaxReader(const string & SpecificPath, const string & IFFileName);
 void PlanTimeRecorder(const double & PlanTimeVal, const string & SpecificPath, const int & FileIndex);
+std::vector<double> ConfigSampler(const Robot & SimRobotObj);
 
 /* 5. Contact Polyhedron functions */
 FacetInfo FlatContactHullGeneration(const std::vector<Vector3> & _CPVertices, int& FacetFlag);

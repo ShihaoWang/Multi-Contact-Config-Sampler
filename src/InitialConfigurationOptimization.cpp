@@ -4,11 +4,13 @@
 static Robot SimRobotObj;
 static std::vector<ContactStatusInfo> RobotContactInfo;
 static std::vector<double> RobotConfigRef;
+static std::vector<RegionInfo> RegionInfoObj;
+
+static double DisTol = 0.05;    // 5 cm away
 
 struct InitialConfigurationOpt: public NonlinearOptimizerInfo
 {
   // This is the class struct for the optimizaiton of configuraiton variables
-
   InitialConfigurationOpt():NonlinearOptimizerInfo(){};
 
   // This struct inherits the NonlinearOptimizerInfo struct and we just need to defined the Constraint function
@@ -54,12 +56,8 @@ struct InitialConfigurationOpt: public NonlinearOptimizerInfo
     std::vector<double> F(nObjNCons);
     Config ConfigOptNew(ConfigOpt);
     SimRobotObj.UpdateConfig(ConfigOptNew);     // Here both the SimRobot.q and robot frames have already been updated.
-    double ConfigVia = 0.0;
-    for (int i = 0; i <nVar; i++)
-    {
-      ConfigVia +=(ConfigOpt[i] - RobotConfigRef[i]) * (ConfigOpt[i] - RobotConfigRef[i]);
-    }
-    F[0] =  ConfigVia;
+
+    F[0] = 0.0;
     // Make sure that active end effectors have zero relative signed distance.
     int ConstraintIndex = 1;
     for (int i = 0; i < RobotLinkInfo.size(); i++)
@@ -68,21 +66,20 @@ struct InitialConfigurationOpt: public NonlinearOptimizerInfo
       {
         Vector3 LinkiPjPos;
         SimRobotObj.GetWorldPosition(RobotLinkInfo[i].LocalContacts[j], RobotLinkInfo[i].LinkIndex, LinkiPjPos);
-        F[ConstraintIndex] = NonlinearOptimizerInfo::SDFInfo.SignedDistance(LinkiPjPos);      ConstraintIndex = ConstraintIndex + 1;
+        F[ConstraintIndex] = NonlinearOptimizerInfo::SDFInfo.SignedDistance(LinkiPjPos);
+        ConstraintIndex = ConstraintIndex + 1;
       }
     }
 
-    // The last constraint is that all the links have to remain nonnegative with respect to the environment.
-    // The robot link COM position
-    for (int i = 0; i < nVar-6; i++)
+    for (int i = 6; i < nVar; i++)
     {
       Vector3 Link_i_COM;
-      SimRobotObj.links[i+6].GetWorldCOM(Link_i_COM);
+      SimRobotObj.links[i].GetWorldCOM(Link_i_COM);
       F[ConstraintIndex] = NonlinearOptimizerInfo::SDFInfo.SignedDistance(Link_i_COM);     // Here 0.001 is the epsilon addition
       ConstraintIndex = ConstraintIndex + 1;
     }
 
-    // The last constraint is to make sure that Center of Mass remains to be within SP
+    // The objective is to make sure that Center of Mass remains to be within SP as inner as possible.
     std::vector<Vector3> SPVertices;
     for (int i = 0; i < RobotLinkInfo.size(); i++)
     {
@@ -91,8 +88,6 @@ struct InitialConfigurationOpt: public NonlinearOptimizerInfo
       {
         switch (RobotContactInfo[i].LocalContactStatus[j])
         {
-          case 0:
-          break;
           case 1:
           {
             Vector3 LinkiPjPos;
@@ -105,27 +100,68 @@ struct InitialConfigurationOpt: public NonlinearOptimizerInfo
           break;
         }
       }
+      switch (RobotContactInfo[i].LocalContactStatus[0])
+      {
+        case 1:
+        {
+          Vector3 LinkiPjPos;
+          SimRobotObj.GetWorldPosition(RobotLinkInfo[i].AvgLocalContact, RobotLinkInfo[i].LinkIndex, LinkiPjPos);
+          // x range
+          F[ConstraintIndex] = LinkiPjPos.x - RegionInfoObj[i].xMin;
+          ConstraintIndex = ConstraintIndex + 1;
+          F[ConstraintIndex] = RegionInfoObj[i].xMax - LinkiPjPos.x;
+          ConstraintIndex = ConstraintIndex + 1;
+          // y range
+          F[ConstraintIndex] = LinkiPjPos.y - RegionInfoObj[i].yMin;
+          ConstraintIndex = ConstraintIndex + 1;
+          F[ConstraintIndex] = RegionInfoObj[i].yMax - LinkiPjPos.y;
+          ConstraintIndex = ConstraintIndex + 1;
+          // z range
+          F[ConstraintIndex] = LinkiPjPos.z - RegionInfoObj[i].zMin;
+          ConstraintIndex = ConstraintIndex + 1;
+          F[ConstraintIndex] = RegionInfoObj[i].zMax - LinkiPjPos.z;
+          ConstraintIndex = ConstraintIndex + 1;
+        }
+        break;
+        default:
+        {
+          // x range
+          F[ConstraintIndex] = 0.0;
+          ConstraintIndex = ConstraintIndex + 1;
+          F[ConstraintIndex] = 0.0;
+          ConstraintIndex = ConstraintIndex + 1;
+          // y range
+          F[ConstraintIndex] = 0.0;
+          ConstraintIndex = ConstraintIndex + 1;
+          F[ConstraintIndex] = 0.0;
+          ConstraintIndex = ConstraintIndex + 1;
+          // z range
+          F[ConstraintIndex] = 0.0;
+          ConstraintIndex = ConstraintIndex + 1;
+          F[ConstraintIndex] = 0.0;
+          ConstraintIndex = ConstraintIndex + 1;
+        }
+        break;
+      }
     }
     Vector3 COM_Pos = SimRobotObj.GetCOM();
     int FacetFlag = 0;
     FacetInfo SPObj = FlatContactHullGeneration(SPVertices, FacetFlag);    // This is the support polygon
-    // COM_Pos.z = 0.0;
-    // F[ConstraintIndex] = SPObj.ProjPoint2EdgeDist(COM_Pos) - 0.025;
-    // ConstraintIndex = ConstraintIndex + 1;
-
+    COM_Pos.z = 0.0;
     F[0] =  -SPObj.ProjPoint2EdgeDist(COM_Pos);
+
     return F;
   }
 };
 
-static std::vector<double> InitialConfigOptFn(std::vector<double> &RobotConfig)
+static std::vector<double> InitialConfigOptFn(int & OptFlag)
 {
   // This function is used to optimize the robot configuraiton variable such that certain contact is active.
   InitialConfigurationOpt InitialConfigOptProblem;
 
   // Static Variable Substitution
   int n = SimRobotObj.q.size();
-  int neF = 1;                                                                  // Cost function on the norm difference between the reference configuration and the optimized configuration
+  int neF = 1;                                                                  // Dist of CoM projection to SP edges.
   for (int i = 0; i < RobotContactInfo.size(); i++)
   {
     for (int j = 0; j < RobotContactInfo[i].LocalContactStatus.size(); j++)    // Each contact has a distance constraint.
@@ -133,8 +169,11 @@ static std::vector<double> InitialConfigOptFn(std::vector<double> &RobotConfig)
       neF = neF + 1;
     }
   }
-  neF = neF + n - 6;
-  // neF = neF + 1;      // Add one more constraint on the CoM within SP
+
+  neF = neF + n - 6;      // To make sure that robot's links are all above the ground
+  neF += 24;              // We would like to make sure that the center of contact remains within certain region.
+  std::vector<double> RobotConfig(n, 0.0);
+
   InitialConfigOptProblem.InnerVariableInitialize(n, neF);
 
   /*
@@ -148,21 +187,6 @@ static std::vector<double> InitialConfigOptFn(std::vector<double> &RobotConfig)
     xlow_vec[i] = SimRobotObj.qMin(i);
     xupp_vec[i] = SimRobotObj.qMax(i);
   }
-  xlow_vec[0] = RobotConfig[0];
-  xlow_vec[0] = RobotConfig[0];
-  xlow_vec[1] = RobotConfig[1];
-  xlow_vec[1] = RobotConfig[1];
-
-  xlow_vec[4] = 0.0;
-  xupp_vec[4] = 0.0;
-
-  // // 1 Contact: Link 11
-  // xlow_vec[9] = 1.0;
-  // xupp_vec[9] = 1.0;
-
-  // 1 Contact: Link 117
-  xlow_vec[15] = 1.0;
-  xupp_vec[15] = 1.0;
 
   InitialConfigOptProblem.VariableBoundsUpdate(xlow_vec, xupp_vec);
 
@@ -186,24 +210,29 @@ static std::vector<double> InitialConfigOptFn(std::vector<double> &RobotConfig)
         ConstraintIndex = ConstraintIndex + 1;
         break;
         case 0:
-        Flow_vec[ConstraintIndex] = 0;
+        Flow_vec[ConstraintIndex] = DisTol;
         Fupp_vec[ConstraintIndex] = 1e20;         // This is due to the nonpenetraition consideration.
         ConstraintIndex = ConstraintIndex + 1;
         break;
       }
     }
   }
-  for (int i = 0; i < SimRobotObj.q.size()-6; i++)
+  for (int i = 6; i < n; i++)
   {
     Flow_vec[ConstraintIndex] = 0;
-    Fupp_vec[ConstraintIndex] = 1e20;         // This is due to the nonpenetraition consideration.
+    Fupp_vec[ConstraintIndex] = 1e20;         // This is to prevent robot into the ground!
     ConstraintIndex = ConstraintIndex + 1;
   }
 
-  // // Projected Center of Mass within Support Polygon
-  // Flow_vec[ConstraintIndex] = 0;
-  // Fupp_vec[ConstraintIndex] = 1e20;
-  // ConstraintIndex = ConstraintIndex + 1;
+  for(int i = 0; i < 4; i++)
+  {
+    for (int j = 0; j < 3; j++)
+    {
+      Flow_vec[ConstraintIndex] = 0;
+      Fupp_vec[ConstraintIndex] = 1e20;         // This is due to the nonpenetraition consideration.
+      ConstraintIndex = ConstraintIndex + 1;
+    }
+  }
 
   InitialConfigOptProblem.ConstraintBoundsUpdate(Flow_vec, Fupp_vec);
 
@@ -218,7 +247,7 @@ static std::vector<double> InitialConfigOptFn(std::vector<double> &RobotConfig)
   InitialConfigOptProblem.ProblemNameUpdate("InitialConfigOptProblem", 0);
 
   InitialConfigOptProblem.NonlinearProb.setIntParameter("Iterations limit", 1000000);
-  InitialConfigOptProblem.NonlinearProb.setIntParameter("Major iterations limit", 250);
+  InitialConfigOptProblem.NonlinearProb.setIntParameter("Major iterations limit", 500);
   InitialConfigOptProblem.NonlinearProb.setIntParameter("Major print level", 0);
   InitialConfigOptProblem.NonlinearProb.setIntParameter("Minor print level", 0);
   /*
@@ -226,17 +255,26 @@ static std::vector<double> InitialConfigOptFn(std::vector<double> &RobotConfig)
   */
   // Solve with Finite-Difference
   InitialConfigOptProblem.ProblemOptionsUpdate(0, 3);
-  InitialConfigOptProblem.Solve(RobotConfig);
+
+  try
+  {
+    InitialConfigOptProblem.Solve(RobotConfig);
+    OptFlag = 1;
+  }
+  catch (...)
+  {
+    OptFlag = 0;
+  }
 
   return RobotConfig;
 }
 
-std::vector<double> InitialConfigurationOptimization(Robot& _SimRobotObj, const std::vector<ContactStatusInfo> &  _RobotContactInfo, const std::vector<double>& _RobotConfigRef)
+std::vector<double> InitialConfigurationOptimization(Robot& _SimRobotObj, const std::vector<ContactStatusInfo> &  _RobotContactInfo, const std::vector<double>& _RobotConfigRef,const std::vector<RegionInfo> & _RegionInfoObj, int & OptFlag)
 {
   SimRobotObj = _SimRobotObj;
   RobotContactInfo = _RobotContactInfo;
   RobotConfigRef = _RobotConfigRef;
-
-  std::vector<double> RobotConfig(_RobotConfigRef.size(), 0);
-  return InitialConfigOptFn(RobotConfig);
+  RegionInfoObj = _RegionInfoObj;
+  std::vector<double> RobotConfig = InitialConfigOptFn(OptFlag);
+  return RobotConfig;
 }

@@ -657,3 +657,21 @@ void PlanTimeRecorder(const double & PlanTimeVal, const string & SpecificPath, c
   PlanTimeFile<<"\n";
   PlanTimeFile.close();
 }
+
+std::vector<double> ConfigSampler(const Robot & SimRobotObj)
+{
+  // This function is used to sample robot's configuration according to its range.
+  std::vector<double> Config(SimRobotObj.q.size(), 0.0);
+  for (int i = 0; i < SimRobotObj.q.size(); i++)
+  {
+    // Configuration bounds
+    double low = SimRobotObj.qMin(i);
+    double upp = SimRobotObj.qMax(i);
+    std::uniform_real_distribution<double> unif(low, upp);
+    std::random_device rand_dev;          // Use random_device to get a random seed.
+    std::mt19937 rand_engine(rand_dev()); // mt19937 is a good pseudo-random number generator.
+    double boundval = unif(rand_engine);
+    Config[i] = boundval;
+  }
+  return Config;
+}
