@@ -61,9 +61,7 @@ int main_inner()
     Meshing::TriMesh EnviTriMesh_i  = Terrain_ptr->geometry->AsTriangleMesh();
     EnviTriMesh.MergeWith(EnviTriMesh_i);
   }
-  CollisionMesh EnviTriMeshTopology(EnviTriMesh);
-  EnviTriMeshTopology.InitCollisions();
-  EnviTriMeshTopology.CalcTriNeighbors();
+  AnyCollisionGeometry3D TerrColGeom(EnviTriMesh);
 
   Robot SimRobotObj = SimRobot;
   std::vector<double> InitRobotConfig(SimRobotObj.q.size(), 0.0);
@@ -80,7 +78,7 @@ int main_inner()
   LeftHand.yUpdate(-1.0, 0.0);
   LeftHand.zUpdate(0.75, 1.15);
   RightHand = LeftHand;
-  COM.xUpdate(0.0, 3.75);
+  COM.xUpdate(0.0, 1.5);
   COM.yUpdate(-1.5, 0.5);
   COM.zUpdate(0.5, 0.8);
 
@@ -101,16 +99,8 @@ int main_inner()
     InitRobotConfig[4] = RandomValue(M_PI/2.0);
     InitRobotConfig[5] = RandomValue(M_PI/2.0);
 
-    int OptFlag = 0;
     InitRobotConfig = InitialConfigurationOptimization(SimRobotObj, RobotContactInfo, InitRobotConfig, RegionInfoObj, OptFlag);
-    switch (OptFlag)
-    {
-      case 0:
-      continue;
-      break;
-      default:
-      break;
-    }
+    if(!OptFlag) continue;
 
     RobotConfigWriter(InitRobotConfig, "/home/motion/Desktop/Multi-Contact-Config-Sampler/build/", "InitConfig.config");
 
@@ -119,51 +109,27 @@ int main_inner()
     SimRobotObj.UpdateGeometry();
     SimRobotObj.dq = InitRobotVelocity;
     SelfCollisionTest = SimRobotObj.SelfCollision();
-    if(SelfCollisionTest)
-    {
-      continue;
-    }
+    if(SelfCollisionTest) continue;
+
     // Then EnvironmentCollision Test!
+    std::vector<double> LinkTerrDistVec(SimRobot.q.size() - 6);
     for (int i = 6; i < SimRobot.q.size(); i++)
     {
-      CollisionMesh RobotLinkMeshTopology(RobotLinkMesh);
-      RobotLinkMeshTopology.InitCollisions();
-      // RobotLinkMeshTopology.CalcTriNeighbors();
-
-      AnyCollisionQuery EnviCollision= new AnyCollisionQuery(*geometry[i],*SimRobotObj.geometry[i]);
-
-
-      AnyCollisionQuery
-      CollisionMeshQuery CollisionChecker(EnviTriMeshTopology, RobotLinkMeshTopology);
-
-      std::printf("Link %d's Penetration Depth %f\n", i, CollisionChecker.PenetrationDepth());
-
-      std::vector<Vector3> p1, p2;
-
-      CollisionChecker.TolerancePoints(p1, p2);
-      int a = 1;
-
-      // if(CollisionChecker.Collide())
-      // {
-      //   EnviCollisionTest = true;
-      //   break;
-      // }
-      // else
-      // {
-      //   EnviCollisionTest = false;
-      // }
+      double LinkTerrDist = SimRobotObj.geometry[i]->Distance(TerrColGeom);
+      AnyCollisionQuery CollisionObj(TerrColGeom, *SimRobotObj.geometry[i]);
+      LinkTerrDistVec[i-6] = CollisionObj.PenetrationDepth();
     }
-    if(EnviCollisionTest)
+    if(*std::max_element(LinkTerrDistVec.begin(), LinkTerrDistVec.end())>0)
     {
+      EnviCollisionTest = true;
       continue;
     }
-    int a = 1;
+    else
+    {
+      EnviCollisionTest = false;
+    }
   }
 
-  SimRobotObj.UpdateConfig(Config(InitRobotConfig));
-  SimRobotObj.UpdateGeometry();
-
-  Vector3 COMPos(0.0, 0.0, 0.0), COMVel(0.0, 0.0, 0.0);
 
   //  Given the optimized result to be the initial state
   Sim.world->robots[0]->UpdateConfig(Config(InitRobotConfig));
@@ -173,12 +139,15 @@ int main_inner()
   Sim.controlSimulators[0].oderobot->SetVelocities(Config(InitRobotVelocity));
 
   double InitDuration = 2.0;
-  double TimeStep = 0.025;
+  double TimeStep = 0.1;
 
   string str = "cd /home/motion/Desktop/Multi-Contact-Config-Sampler/build/";
   str+="&& rm -f *StateTraj.path";
   const char *command = str.c_str();
   system(command);
+
+  Vector3 COMPos(0.0, 0.0, 0.0), COMVel(0.0, 0.0, 0.0);
+  CentroidalState(*Sim.world->robots[0], COMPos, COMVel);
 
   double InitCOMDist = NonlinearOptimizerInfo::SDFInfo.SignedDistance(COMPos);
   while(Sim.time <= InitDuration)
@@ -190,13 +159,14 @@ int main_inner()
     COMDistDiff = COMDistDiff * COMDistDiff;
     std::printf("Initial Simulation Time: %f, InitCOMDist: %f, CurCOMDist: %f, and COMDistDiff2: %f\n", Sim.time, InitCOMDist, CurCOMDist, COMDistDiff);
 
-    if(COMDistDiff>0.01)
-    {
-      return -1;
-    }
     StateTrajAppender(FailureStateTrajStr_Name, Sim.time, Sim.world->robots[0]->q);
     StateTrajAppender(CtrlStateTrajStr_Name, Sim.time, Sim.world->robots[0]->q);
     StateTrajAppender(PlanStateTrajStr_Name, Sim.time, Sim.world->robots[0]->q);
+
+    if(COMDistDiff>0.0001)
+    {
+      return -1;
+    }
 
     Sim.Advance(TimeStep);
     Sim.UpdateModel();
