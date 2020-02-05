@@ -375,7 +375,7 @@ void ContactNumberFinder(const std::vector<ContactStatusInfo> & RobotContactInfo
 int FileIndexFinder(bool UpdateFlag)
 {
   // This function is used to read the current File Index to make sure that the file is ranged according to the number.
-  string FileIndexName = "FileIndex.txt";         // This file should be located in the "build" folder.
+  string FileIndexName = "ConfigNo.txt";         // This file should be located in the "build" folder.
   ifstream FileIndexReader(FileIndexName);
   int FileIndex;
   string str_line;
@@ -674,4 +674,44 @@ std::vector<double> ConfigSampler(const Robot & SimRobotObj)
     Config[i] = boundval;
   }
   return Config;
+}
+
+void RegionInfoLoader(RegionInfo & LeftFoot, RegionInfo & RightFoot, RegionInfo & LeftHand, RegionInfo & RightHand, RegionInfo & COM)
+{
+  string RegionFileName = "./Specs/Regions.txt";         // This file should be located in the "build" folder.
+  ifstream RegionReader(RegionFileName);
+  std::vector<pair<double, double>> RegionVec;
+  string str_line;
+  if (RegionReader.is_open())
+  {
+    while (getline (RegionReader, str_line) )
+    {
+      std::size_t found = str_line.find(",");
+      std::string firstEle = str_line.substr (0, found);     // "think"
+      std::string secondEle = str_line.substr (found + 2, str_line.size() - found);     // "think"
+      double firstEleVal = stod(firstEle);
+      double secondEleVal  = stod(secondEle);
+      RegionVec.push_back(make_pair(firstEleVal, secondEleVal));
+    }
+    RegionReader.close();
+  }
+  else cout << "Unable to open ./Specs/Regions.txt file";
+
+  LeftFoot.xUpdate(RegionVec[0].first, RegionVec[0].second);
+  LeftFoot.yUpdate(RegionVec[1].first, RegionVec[1].second);
+  LeftFoot.zUpdate(RegionVec[2].first, RegionVec[2].second);
+
+  RightFoot = LeftFoot;
+
+  LeftHand.xUpdate(RegionVec[3].first, RegionVec[3].second);
+  LeftHand.yUpdate(RegionVec[4].first, RegionVec[4].second);
+  LeftHand.zUpdate(RegionVec[5].first, RegionVec[5].second);
+
+  RightHand = LeftHand;
+
+  COM.xUpdate(RegionVec[6].first, RegionVec[6].second);
+  COM.yUpdate(RegionVec[7].first, RegionVec[7].second);
+  COM.zUpdate(RegionVec[8].first, RegionVec[8].second);
+
+  return;
 }

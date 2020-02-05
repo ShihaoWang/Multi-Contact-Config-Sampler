@@ -73,6 +73,7 @@ Vector3 ImpulForceGene(const double & ImpFx, const double & ImpFy, const double 
 Vector3 ImpulForceMaxReader(const string & SpecificPath, const string & IFFileName);
 void PlanTimeRecorder(const double & PlanTimeVal, const string & SpecificPath, const int & FileIndex);
 std::vector<double> ConfigSampler(const Robot & SimRobotObj);
+void RegionInfoLoader(RegionInfo & LeftFoot, RegionInfo & RightFoot, RegionInfo & LeftHand, RegionInfo & RightHand, RegionInfo & COM);
 
 /* 5. Contact Polyhedron functions */
 FacetInfo FlatContactHullGeneration(const std::vector<Vector3> & _CPVertices, int& FacetFlag);

@@ -7,6 +7,11 @@
 #include "Modeling/World.h"
 #include <ode/ode.h>
 #include <math.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <string>
+#include <fstream>
+
 
 SignedDistanceFieldInfo NonlinearOptimizerInfo::SDFInfo;
 std::vector<LinkInfo>   NonlinearOptimizerInfo::RobotLinkInfo;
@@ -14,15 +19,15 @@ std::vector<LinkInfo>   NonlinearOptimizerInfo::RobotLinkInfo;
 // The main purpose of this function is to create a number of initial configurations such that the experiemntation can be easily conducted.
 int main_inner()
 {
-  std::string FolderPath = "/home/motion/Desktop/Online-Contact-Planning-for-Fall-Mitigation/";
-  std::string EnviName = "Envi1.xml";
+  std::ifstream FolderPathFile("./Specs/FolderPath.txt");
+  std::string FolderPath;
+  std::getline(FolderPathFile, FolderPath);
+  FolderPathFile.close();
 
-  string FailureStateTrajStr = "/home/motion/Desktop/Multi-Contact-Config-Sampler/build/FailureStateTraj.path";
-  const char *FailureStateTrajStr_Name = FailureStateTrajStr.c_str();
-  string CtrlStateTrajStr = "/home/motion/Desktop/Multi-Contact-Config-Sampler/build/CtrlStateTraj.path";
-  const char *CtrlStateTrajStr_Name = CtrlStateTrajStr.c_str();
-  string PlanStateTrajFileStr = "/home/motion/Desktop/Multi-Contact-Config-Sampler/build/PlanStateTraj.path";
-  const char *PlanStateTrajStr_Name = PlanStateTrajFileStr.c_str();
+  std::ifstream EnviNameFile("./Specs/EnviName.txt");
+  std::string EnviName;
+  std::getline(EnviNameFile, EnviName);
+  EnviNameFile.close();
 
   RobotWorld world;
   SimGUIBackend Backend(&world);
@@ -44,13 +49,21 @@ int main_inner()
   NonlinearOptimizerInfo::RobotLinkInfo = ContactInfoLoader(ContactLinkPath, NumberOfContactPoints);
 
   /* 2. Load the Contact Status file */
-  const std::string ContactStatusPath ="/home/motion/Desktop/Multi-Contact-Config-Sampler/build/ContactStatus.txt";
+  const std::string ContactStatusPath ="./Specs/ContactStatus.txt";
   std::vector<ContactStatusInfo> RobotContactInfo = ContactStatusInfoLoader(ContactStatusPath);
 
   /* 3. Environment Geometry and Reachability Map*/
   const int GridsNo = 251;
-  // NonlinearOptimizerInfo::SDFInfo = SignedDistanceFieldGene(world, GridsNo);
-  NonlinearOptimizerInfo::SDFInfo = SignedDistanceFieldLoader(GridsNo);
+  struct stat buffer;   // This is used to check whether "SDFSpecs.bin" exists or not.
+  const string SDFSpecsName = "SDFSpecs.bin";
+  if(stat (SDFSpecsName.c_str(), &buffer) == 0)
+  {
+    NonlinearOptimizerInfo::SDFInfo = SignedDistanceFieldLoader(GridsNo);
+  }
+  else
+  {
+    NonlinearOptimizerInfo::SDFInfo = SignedDistanceFieldGene(world, GridsNo);
+  }
 
   const int NumberOfTerrains = world.terrains.size();
   std::shared_ptr<Terrain> Terrain_ptr = std::make_shared<Terrain>(*world.terrains[0]);
@@ -69,20 +82,9 @@ int main_inner()
 
   RegionInfo LeftFoot, RightFoot, LeftHand, RightHand;
   RegionInfo COM;
+  RegionInfoLoader(LeftFoot, RightFoot, LeftHand, RightHand, COM);
 
-  LeftFoot.xUpdate(0.0, 3.75);
-  LeftFoot.yUpdate(-0.5, 0.5);
-  LeftFoot.zUpdate(-0.25, 0.25);
-  RightFoot = LeftFoot;
-  LeftHand.xUpdate(3.95, 4.05);
-  LeftHand.yUpdate(-1.0, 0.0);
-  LeftHand.zUpdate(0.75, 1.15);
-  RightHand = LeftHand;
-  COM.xUpdate(0.0, 1.5);
-  COM.yUpdate(-1.5, 0.5);
-  COM.zUpdate(0.5, 0.8);
-
-  std::vector<RegionInfo> RegionInfoObj = {LeftFoot, RightFoot, LeftHand, RightHand};
+  std::vector<RegionInfo> RegionInfoObj = { LeftFoot, RightFoot, LeftHand, RightHand };
 
   bool SelfCollisionTest = true;
   bool EnviCollisionTest = true;
@@ -101,8 +103,6 @@ int main_inner()
 
     InitRobotConfig = InitialConfigurationOptimization(SimRobotObj, RobotContactInfo, InitRobotConfig, RegionInfoObj, OptFlag);
     if(!OptFlag) continue;
-
-    RobotConfigWriter(InitRobotConfig, "/home/motion/Desktop/Multi-Contact-Config-Sampler/build/", "InitConfig.config");
 
     // Then SelfCollision Test!
     SimRobotObj.UpdateConfig(Config(InitRobotConfig));
@@ -129,8 +129,6 @@ int main_inner()
       EnviCollisionTest = false;
     }
   }
-
-
   //  Given the optimized result to be the initial state
   Sim.world->robots[0]->UpdateConfig(Config(InitRobotConfig));
   Sim.world->robots[0]->dq = InitRobotVelocity;
@@ -140,11 +138,6 @@ int main_inner()
 
   double InitDuration = 2.0;
   double TimeStep = 0.1;
-
-  string str = "cd /home/motion/Desktop/Multi-Contact-Config-Sampler/build/";
-  str+="&& rm -f *StateTraj.path";
-  const char *command = str.c_str();
-  system(command);
 
   Vector3 COMPos(0.0, 0.0, 0.0), COMVel(0.0, 0.0, 0.0);
   CentroidalState(*Sim.world->robots[0], COMPos, COMVel);
@@ -157,11 +150,6 @@ int main_inner()
 
     double COMDistDiff = CurCOMDist - InitCOMDist;
     COMDistDiff = COMDistDiff * COMDistDiff;
-    std::printf("Initial Simulation Time: %f, InitCOMDist: %f, CurCOMDist: %f, and COMDistDiff2: %f\n", Sim.time, InitCOMDist, CurCOMDist, COMDistDiff);
-
-    StateTrajAppender(FailureStateTrajStr_Name, Sim.time, Sim.world->robots[0]->q);
-    StateTrajAppender(CtrlStateTrajStr_Name, Sim.time, Sim.world->robots[0]->q);
-    StateTrajAppender(PlanStateTrajStr_Name, Sim.time, Sim.world->robots[0]->q);
 
     if(COMDistDiff>0.0001)
     {
@@ -171,12 +159,38 @@ int main_inner()
     Sim.Advance(TimeStep);
     Sim.UpdateModel();
   }
+  int FileIndex = FileIndexFinder(false);
+  const string FileName = "./res/" + to_string(FileIndex) + "/";
+  RobotConfigWriter(InitRobotConfig, FileName, "InitConfig.config");
+  string str = "cp " + ContactStatusPath + " " + FileName;
+  const char *command = str.c_str();
+  system(command);
+
+  FileIndex = FileIndexFinder(true);
   std::printf("Initial Simulation Done!\n");
   return 1;
 }
 
 int main()
 {
+  int ConfigNo = FileIndexFinder(false);
+  struct stat buffer;   // This is used to check whether "SDFSpecs.bin" exists or not.
+  const string SDFSpecsName = "./res/" + to_string(ConfigNo);
+  if(stat (SDFSpecsName.c_str(), &buffer) == 0)
+  {
+    // There exists this folder, we remove all the files within this folder
+    string str = "cd ";
+    str+=SDFSpecsName + " && rm -r *.*";
+    const char *command = str.c_str();
+    system(command);
+  }
+  else
+  {
+    // We then create this folder.
+    string str = "mkdir " + SDFSpecsName;
+    const char *command = str.c_str();
+    system(command);
+  }
   int res = -1;
   while(res == -1)
   {
