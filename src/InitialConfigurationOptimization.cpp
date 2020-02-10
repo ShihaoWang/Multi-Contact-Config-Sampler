@@ -247,7 +247,7 @@ static std::vector<double> InitialConfigOptFn(int & OptFlag)
   InitialConfigOptProblem.ProblemNameUpdate("InitialConfigOptProblem", 0);
 
   InitialConfigOptProblem.NonlinearProb.setIntParameter("Iterations limit", 1000000);
-  InitialConfigOptProblem.NonlinearProb.setIntParameter("Major iterations limit", 500);
+  InitialConfigOptProblem.NonlinearProb.setIntParameter("Major iterations limit", 250);
   InitialConfigOptProblem.NonlinearProb.setIntParameter("Major print level", 0);
   InitialConfigOptProblem.NonlinearProb.setIntParameter("Minor print level", 0);
   /*

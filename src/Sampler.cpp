@@ -15,6 +15,7 @@
 
 SignedDistanceFieldInfo NonlinearOptimizerInfo::SDFInfo;
 std::vector<LinkInfo>   NonlinearOptimizerInfo::RobotLinkInfo;
+static double DisTol = 0.0005;     //0.5mm
 
 // The main purpose of this function is to create a number of initial configurations such that the experiemntation can be easily conducted.
 int main_inner()
@@ -119,7 +120,7 @@ int main_inner()
       AnyCollisionQuery CollisionObj(TerrColGeom, *SimRobotObj.geometry[i]);
       LinkTerrDistVec[i-6] = CollisionObj.PenetrationDepth();
     }
-    if(*std::max_element(LinkTerrDistVec.begin(), LinkTerrDistVec.end())>0)
+    if(*std::max_element(LinkTerrDistVec.begin(), LinkTerrDistVec.end())>DisTol)
     {
       EnviCollisionTest = true;
       continue;
@@ -151,7 +152,7 @@ int main_inner()
     double COMDistDiff = CurCOMDist - InitCOMDist;
     COMDistDiff = COMDistDiff * COMDistDiff;
 
-    if(COMDistDiff>0.0001)
+    if(COMDistDiff>DisTol)
     {
       return -1;
     }
